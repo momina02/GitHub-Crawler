@@ -4,7 +4,7 @@ from dotenv import load_dotenv
 from tqdm import tqdm
 import pandas as pd
 from github_api import GitHubRestCrawler
-from db import get_conn
+from db import get_conn, initialize_database
 
 load_dotenv()
 
@@ -96,6 +96,51 @@ def main():
 
     print(f"Refreshing {len(all_repos)} existing repos...")
 
+    # If database is empty, perform an initial seed of popular repositories
+    if len(all_repos) == 0:
+        print("No existing repos found — performing initial seed of popular repositories...")
+        # Ensure DB schema exists (harmless if already created)
+        try:
+            initialize_database()
+        except Exception:
+            # initialize_database is best-effort; continue even if it fails here
+            pass
+
+        seed_batch = []
+        inserted = 0
+        for repo in tqdm(crawler.fetch_popular_repos(TARGET_COUNT)):
+            updated_at = repo.get("updated_at")
+            if updated_at:
+                updated_at = updated_at.replace("T", " ").replace("Z", "")
+            seed_batch.append({
+                "repo_id": repo.get("repo_id"),
+                "repo_name": repo.get("repo_name"),
+                "full_name": repo.get("full_name"),
+                "html_url": repo.get("html_url"),
+                "description": repo.get("description"),
+                "stars": repo.get("stars"),
+                "forks": repo.get("forks"),
+                "language": repo.get("language"),
+                "updated_at": updated_at,
+            })
+
+            if len(seed_batch) >= BATCH_SIZE:
+                upsert_batch(conn, seed_batch)
+                inserted += len(seed_batch)
+                print(f"Inserted {inserted} repos so far...")
+                seed_batch.clear()
+                time.sleep(1)
+
+        if seed_batch:
+            upsert_batch(conn, seed_batch)
+            inserted += len(seed_batch)
+        print(f"✅ Initial seeding complete — inserted {inserted} repositories.")
+
+        # Re-query the table for subsequent refresh step
+        cur.execute("SELECT full_name FROM repos")
+        all_repos = [row[0] for row in cur.fetchall()]
+
+    # Refresh existing repos
     rows_batch = []
     for full_name in tqdm(all_repos):
         data = crawler.fetch_repo_details(full_name)
