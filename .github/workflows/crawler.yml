@@ -65,10 +65,18 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.TOKEN_GITHUB }}
         run: python main.py
 
-      - name: Export MySQL table to CSV
+      - name: Export MySQL table to CSV with headers
         run: |
-          mysql -h 127.0.0.1 -uroot -padmin -D github_data -e "SELECT * FROM repos;" \
-          | sed 's/\t/,/g' > repos.csv
+          # Export the table with headers
+          mysql -h 127.0.0.1 -uroot -padmin -D github_data \
+            --batch --raw \
+            -e "SELECT * FROM repos;" > repos.tsv
+
+          # Convert tabs to commas for proper CSV
+          awk 'BEGIN{FS="\t"; OFS=","} {print $0}' repos.tsv > repos.csv
+
+          # Optional: show first 5 lines to confirm
+          head -n 5 repos.csv
 
       - name: Upload CSV artifact
         uses: actions/upload-artifact@v4
