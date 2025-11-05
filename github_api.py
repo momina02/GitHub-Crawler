@@ -1,10 +1,3 @@
-"""
-github_api.py
-A REST-based crawler for GitHub public repositories using `GET /repositories`.
-It pages by the `since` repository id and yields repo dicts.
-Handles rate limits (X-RateLimit-* headers).
-"""
-
 import os
 import time
 import requests
@@ -118,3 +111,129 @@ class GitHubRestCrawler:
             since = last_repo.get("id")
             # small sleep to be polite
             time.sleep(0.5)
+    
+    def fetch_popular_repos(self, limit=100000):
+        """
+        Fetch up to 100,000 popular repositories using GitHub's Search API.
+        Streams repositories page-by-page using yield for continuous insertion.
+        """
+        url = f"{GITHUB_API_BASE}/search/repositories"
+        per_page = min(self.per_page, 100)
+        seen = set()
+        collected = 0
+
+        star_ranges = [
+            "stars:>50000",
+            "stars:10000..50000",
+            "stars:5000..10000",
+            "stars:1000..5000",
+            "stars:500..1000",
+            "stars:200..500",
+            "stars:100..200",
+            "stars:50..100",
+            "stars:10..50",
+            "stars:1..10",
+        ]
+
+        for star_query in star_ranges:
+            for page in range(1, 11):
+                if collected >= limit:
+                    return
+
+                params = {
+                    "q": star_query,
+                    "sort": "stars",
+                    "order": "desc",
+                    "per_page": per_page,
+                    "page": page,
+                }
+
+                resp = self.session.get(url, params=params, timeout=30)
+                if resp.status_code == 403:
+                    self._check_rate_limit_and_maybe_sleep(resp)
+                    continue
+                if resp.status_code != 200:
+                    print(f"❌ Failed {star_query} page {page}: {resp.status_code}")
+                    break
+
+                items = resp.json().get("items", [])
+                if not items:
+                    break
+
+                for repo in items:
+                    if repo["id"] in seen:
+                        continue
+                    seen.add(repo["id"])
+                    collected += 1
+                    yield {
+                        "repo_id": repo["id"],
+                        "repo_name": repo["name"],
+                        "full_name": repo["full_name"],
+                        "html_url": repo["html_url"],
+                        "description": repo.get("description"),
+                        "stars": repo.get("stargazers_count", 0),
+                        "forks": repo.get("forks_count", 0),
+                        "language": repo.get("language"),
+                        "updated_at": repo.get("updated_at"),
+                    }
+
+                    if collected >= limit:
+                        return
+
+                print(f"✅ Collected {collected} repos so far... ({star_query} p{page})")
+                time.sleep(1)
+
+        print(f"🎯 Finished streaming {collected} repositories.")
+
+
+            
+    # def fetch_popular_repos(self, limit=1000):
+    #     """
+    #     Fetch repositories sorted by stars using the Search API.
+    #     This returns older, popular repos instead of new empty ones.
+    #     """
+    #     url = f"{GITHUB_API_BASE}/search/repositories"
+    #     per_page = min(self.per_page, 100)
+    #     repos = []
+    #     page = 1
+
+    #     while len(repos) < limit:
+    #         params = {
+    #             "q": "stars:>100",  # only repos with >100 stars
+    #             "sort": "stars",
+    #             "order": "desc",
+    #             "per_page": per_page,
+    #             "page": page,
+    #         }
+    #         resp = self.session.get(url, params=params, timeout=30)
+    #         if resp.status_code == 403:
+    #             self._check_rate_limit_and_maybe_sleep(resp)
+    #             continue
+    #         if resp.status_code != 200:
+    #             print("Failed:", resp.status_code, resp.text)
+    #             break
+
+    #         items = resp.json().get("items", [])
+    #         if not items:
+    #             break
+
+    #         for repo in items:
+    #             repos.append({
+    #                 "repo_id": repo["id"],
+    #                 "repo_name": repo["name"],
+    #                 "full_name": repo["full_name"],
+    #                 "html_url": repo["html_url"],
+    #                 "description": repo["description"],
+    #                 "stars": repo["stargazers_count"],
+    #                 "forks": repo["forks_count"],
+    #                 "language": repo["language"],
+    #                 "updated_at": repo["updated_at"],
+    #             })
+    #             if len(repos) >= limit:
+    #                 break
+
+    #         page += 1
+    #         time.sleep(1)  # polite delay
+
+    #     return repos
+    
