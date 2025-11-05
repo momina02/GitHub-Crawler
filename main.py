@@ -1,11 +1,3 @@
-"""
-main.py
-Orchestrator: fetch repositories and upsert into MySQL database in batches.
-Usage:
-    - Set environment variables (or rely on defaults used in GitHub Actions)
-    - Run: python main.py
-"""
-
 import os
 import time
 from dotenv import load_dotenv
@@ -116,7 +108,11 @@ def main():
         upsert_batch(conn, rows_batch)
 
     print("✅ All repos updated successfully.")
-
+    
+    # Export updated data to CSV for GitHub Actions artifact
+    df = pd.read_sql("SELECT * FROM repos", conn)
+    df.to_csv("repos.csv", index=False)
+    print("📦 Exported repos.csv with", len(df), "records.")
 
 
 if __name__ == "__main__":
