@@ -40,7 +40,7 @@ jobs:
       - name: Wait for MySQL to be ready
         run: |
           for i in {1..30}; do
-            mysql -h mysql -uroot -padmin -e "SELECT 1" && break
+            mysql -h 127.0.0.1 -uroot -padmin -e "SELECT 1" && break
             echo "Waiting for MySQL..."
             sleep 2
           done
@@ -48,7 +48,7 @@ jobs:
       - name: Create .env
         run: |
           cat > .env <<EOF
-          MYSQL_HOST=mysql
+          MYSQL_HOST=127.0.0.1
           MYSQL_PORT=3306
           MYSQL_USER=root
           MYSQL_PASSWORD=admin
@@ -67,15 +67,15 @@ jobs:
 
       - name: Export MySQL table to CSV with headers
         run: |
-          # Export the 'repos' table to a TSV file from the service container
-          mysql -h mysql -uroot -padmin -D github_data \
+          # Export the 'repos' table to a TSV file
+          mysql -h 127.0.0.1 -uroot -padmin -D github_data \
             --batch --raw \
             -e "SELECT * FROM repos;" > repos.tsv
 
-          # Convert tabs to commas for proper CSV
+          # Convert tabs to commas for CSV and preserve headers
           awk 'BEGIN{FS="\t"; OFS=","} {print $0}' repos.tsv > repos.csv
 
-          # Optional: check first 5 lines in Actions log
+          # Optional: show first 5 lines in Actions log
           head -n 5 repos.csv
 
       - name: Upload CSV artifact
