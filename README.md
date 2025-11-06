@@ -73,3 +73,13 @@ GitHub Actions Trigger
 **crawler.yaml** : This is a GitHub Actions workflow file that automates the running of your crawler. It is set to run daily and can also be triggered manually. It sets up a MySQL service, installs Python dependencies, waits for MySQL to be ready, creates a `.env` file with database and crawler configuration, initializes the database schema, and then runs your `main.py` crawler. After crawling, it exports the database table to a CSV and uploads it as an artifact so you can download it. Essentially, this file automates the entire process in a cloud environment, ensuring your database and CSV are always up to date without manual intervention.
 
 **In short, it is a complete system that: sets up a MySQL database, fetches popular GitHub repositories using the GraphQL API, stores them in batches, refreshes them periodically, and exports the results to a CSV, all fully automatable via GitHub Actions.**
+
+---
+
+## **Approach for fetching 500,000 repos**:
+
+Instead of running a single script, multiple scripts will run in parallel, reducing time. Also, I will add a batch process to make it more efficient. I can also split the data between multiple scripts, so instead of a single script fetching the complete data of a single repo, multiple script will fetch multiple parts of repositories data parallely.
+
+## **Approach for future schema**:
+
+I will make different tables for different types, like there will be a separate table for issues, separate for comments, stars, and so on... it will give a better overview and a clean structure which can be accessed through repo id.
