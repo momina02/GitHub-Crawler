@@ -61,51 +61,74 @@ def upsert_batch(conn, rows):
     conn.commit()
     cur.close()
 
+
 def main():
     token = os.getenv("GITHUB_TOKEN")
     crawler = GitHubRestCrawler(token=token)
     conn = get_conn()
-    cur = conn.cursor()
     initialize_database()
+    cur = conn.cursor()
 
-    # Check last fetched repo_id to resume if needed
-    cur.execute("SELECT MAX(repo_id) FROM repos")
-    last_repo_id = cur.fetchone()[0]
+    # Step 1: Initial fetch if DB is empty
+    cur.execute("SELECT COUNT(*) FROM repos")
+    count = cur.fetchone()[0]
+
+    if count == 0:
+        print(f"DB empty — fetching initial {TARGET_COUNT} repos...")
+        rows_batch = []
+        collected = 0
+        for repo in tqdm(crawler.list_public_repos(TARGET_COUNT)):
+            # Optional: skip repos with zero stars
+            if repo.get("stars", 0) == 0:
+                continue
+
+            rows_batch.append(repo)
+            collected += 1
+
+            if len(rows_batch) >= BATCH_SIZE:
+                upsert_batch(conn, rows_batch)
+                rows_batch.clear()
+                print(f"Inserted {collected} repos so far...")
+                time.sleep(0.5)  # polite pause
+
+            if collected >= TARGET_COUNT:
+                break
+
+        if rows_batch:
+            upsert_batch(conn, rows_batch)
+
+        print(f"✅ Initial fetch complete — inserted {collected} repositories.")
+
+    # Step 2: Refresh existing repos
+    print("Refreshing existing repos...")
+    cur.execute("SELECT full_name FROM repos")
+    all_repos = [row[0] for row in cur.fetchall()]
 
     rows_batch = []
-    collected = 0
+    refreshed_count = 0
 
-    for repo in tqdm(crawler.list_public_repos(TARGET_COUNT)):
-        if last_repo_id and repo["repo_id"] <= last_repo_id:
-            continue  # skip already fetched repos
-
-        # Optional: skip repos with zero stars
-        if repo.get("stars", 0) == 0:
-            continue
-
-        rows_batch.append(repo)
-        collected += 1
+    for full_name in tqdm(all_repos):
+        data = crawler.fetch_repo_details(full_name)
+        if data:
+            rows_batch.append(data)
+            refreshed_count += 1
 
         if len(rows_batch) >= BATCH_SIZE:
             upsert_batch(conn, rows_batch)
-            print(f"Inserted {collected} repos so far...")
             rows_batch.clear()
             time.sleep(0.5)  # polite pause
 
-        if collected >= TARGET_COUNT:
-            break
-
-    # Insert remaining
     if rows_batch:
         upsert_batch(conn, rows_batch)
 
-    print(f"✅ Finished fetching {collected} repositories.")
+    print(f"✅ Refreshed {refreshed_count} existing repositories.")
 
-    # Export to comma-separated CSV
+    # Export to CSV
     df = pd.read_sql("SELECT * FROM repos", conn)
     df["description"] = df["description"].fillna("").str.replace("\n", " ").str.replace("\r", " ").str.strip()
-    df.to_csv("repos.csv", index=False, quoting=csv.QUOTE_MINIMAL)
+    df.to_csv("repos.csv", index=False, quoting=csv.QUOTE_ALL, escapechar='\\')
     print(f"📦 Exported repos.csv with {len(df)} records.")
+
 
 if __name__ == "__main__":
     main()
