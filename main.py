@@ -66,62 +66,61 @@ def main():
     token = os.getenv("GITHUB_TOKEN")
     crawler = GitHubRestCrawler(token=token)
     conn = get_conn()
-    initialize_database()
     cur = conn.cursor()
 
-    # Step 1: Initial fetch if DB is empty
+    # Ensure DB exists
+    initialize_database()
+
+    # Check if DB already has repos
     cur.execute("SELECT COUNT(*) FROM repos")
     count = cur.fetchone()[0]
 
     if count == 0:
-        print(f"DB empty — fetching initial {TARGET_COUNT} repos...")
+        print(f"DB empty — fetching initial {TARGET_COUNT} popular repositories...")
         rows_batch = []
         collected = 0
-        for repo in tqdm(crawler.list_public_repos(TARGET_COUNT)):
-            # Optional: skip repos with zero stars
-            if repo.get("stars", 0) == 0:
-                continue
-
+        for repo in tqdm(crawler.fetch_popular_repos(TARGET_COUNT)):
             rows_batch.append(repo)
             collected += 1
 
             if len(rows_batch) >= BATCH_SIZE:
                 upsert_batch(conn, rows_batch)
-                rows_batch.clear()
                 print(f"Inserted {collected} repos so far...")
+                rows_batch.clear()
                 time.sleep(0.5)  # polite pause
 
             if collected >= TARGET_COUNT:
                 break
 
+        # Insert any remaining repos
         if rows_batch:
             upsert_batch(conn, rows_batch)
 
         print(f"✅ Initial fetch complete — inserted {collected} repositories.")
 
-    # Step 2: Refresh existing repos
-    print("Refreshing existing repos...")
+    # Refresh existing repos
+    print("Refreshing existing repositories...")
     cur.execute("SELECT full_name FROM repos")
     all_repos = [row[0] for row in cur.fetchall()]
 
     rows_batch = []
-    refreshed_count = 0
-
+    refreshed = 0
     for full_name in tqdm(all_repos):
-        data = crawler.fetch_repo_details(full_name)
-        if data:
-            rows_batch.append(data)
-            refreshed_count += 1
+        repo = crawler.fetch_repo_details(full_name)
+        if repo:
+            rows_batch.append(repo)
+            refreshed += 1
 
         if len(rows_batch) >= BATCH_SIZE:
             upsert_batch(conn, rows_batch)
             rows_batch.clear()
-            time.sleep(0.5)  # polite pause
+            time.sleep(0.5)
 
+    # Insert any remaining updates
     if rows_batch:
         upsert_batch(conn, rows_batch)
 
-    print(f"✅ Refreshed {refreshed_count} existing repositories.")
+    print(f"✅ Refreshed {refreshed} existing repositories.")
 
     # Export to CSV
     df = pd.read_sql("SELECT * FROM repos", conn)
@@ -133,6 +132,11 @@ def main():
 if __name__ == "__main__":
     main()
 
+
+
+
+
+# df.to_csv("repos.csv", index=False, quoting=csv.QUOTE_ALL, escapechar='\\')
 
 
 
