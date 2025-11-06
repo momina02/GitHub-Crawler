@@ -52,7 +52,7 @@ def initialize_database():
     # Create the "repos" table
     create_repos = """
     CREATE TABLE IF NOT EXISTS repos (
-        repo_id BIGINT NOT NULL,
+        repo_id VARCHAR(50) NOT NULL,
         repo_name VARCHAR(512),
         full_name VARCHAR(512),
         html_url VARCHAR(1024),

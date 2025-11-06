@@ -57,7 +57,7 @@ class GitHubGraphQLCrawler:
             for edge in edges:
                 node = edge["node"]
                 yield {
-                    "repo_id": int(node["id"], 16) if node["id"].startswith("MDEwOlJlcG9zaXRvcnk") else node["id"],
+                    "repo_id": node["id"],
                     "repo_name": node["name"],
                     "full_name": node["nameWithOwner"],
                     "html_url": node["url"],
@@ -107,7 +107,7 @@ class GitHubGraphQLCrawler:
             return None
 
         return {
-            "repo_id": int(node["id"], 16) if node["id"].startswith("MDEwOlJlcG9zaXRvcnk") else node["id"],
+            "repo_id": node["id"],
             "repo_name": node["name"],
             "full_name": node["nameWithOwner"],
             "html_url": node["url"],
