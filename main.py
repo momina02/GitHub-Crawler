@@ -6,6 +6,7 @@ import pandas as pd
 from github_api import GitHubRestCrawler
 from db import get_conn, initialize_database
 from datetime import datetime
+import csv
 
 load_dotenv()
 
@@ -134,8 +135,19 @@ def main():
     print("✅ All repos updated successfully.")
     
     # Export updated data to CSV for GitHub Actions artifact
+    
+    # df = pd.read_sql("SELECT * FROM repos", conn)
+    # df.to_csv("repos.csv", index=False)
+    # print("📦 Exported repos.csv with", len(df), "records.")
+    
     df = pd.read_sql("SELECT * FROM repos", conn)
-    df.to_csv("repos.csv", index=False)
+
+    # Optional: clean description/newlines
+    df["description"] = df["description"].fillna("").str.replace("\n", " ").str.replace("\r", " ").str.strip()
+
+    # Write CSV with proper quoting
+    df.to_csv("repos.csv", index=False, quoting=csv.QUOTE_ALL, escapechar='\\')
+
     print("📦 Exported repos.csv with", len(df), "records.")
 
 
