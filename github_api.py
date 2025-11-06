@@ -9,7 +9,6 @@ PER_PAGE = 100  # /repositories doesn't accept per_page>100; 100 is standard max
 class RateLimitExceeded(Exception):
     pass
 
-
 class GitHubRestCrawler:
     def __init__(self, token: Optional[str] = None, per_page: int = PER_PAGE, session: Optional[requests.Session] = None):
         self.token = token or os.getenv("GITHUB_TOKEN")
@@ -61,10 +60,6 @@ class GitHubRestCrawler:
                 return
 
     def list_public_repos(self, max_repos: int) -> Iterator[Dict[str, Any]]:
-        """
-        Iterate public repos from /repositories endpoint until we yield max_repos items.
-        This endpoint paginates using the `since` parameter (repo id).
-        """
         collected = 0
         since = None  # repository id to start after
         while collected < max_repos:
@@ -113,47 +108,35 @@ class GitHubRestCrawler:
             time.sleep(0.5)
     
     def fetch_popular_repos(self, limit=100000):
-        """
-        Fetch up to 100,000 popular repositories using GitHub's Search API.
-        Streams repositories page-by-page using yield for continuous insertion.
-        """
-        url = f"{GITHUB_API_BASE}/search/repositories"
-        per_page = min(self.per_page, 100)
+        import datetime
+
+        total_collected = 0
         seen = set()
-        collected = 0
 
-        star_ranges = [
-            "stars:>50000",
-            "stars:10000..50000",
-            "stars:5000..10000",
-            "stars:1000..5000",
-            "stars:500..1000",
-            "stars:200..500",
-            "stars:100..200",
-            "stars:50..100",
-            "stars:10..50",
-            "stars:1..10",
-        ]
+        # Split by 6-month intervals (adjust as needed)
+        start_date = datetime.date(2008, 1, 1)
+        end_date = datetime.date.today()
+        delta = datetime.timedelta(days=180)
 
-        for star_query in star_ranges:
-            for page in range(1, 11):
-                if collected >= limit:
-                    return
+        while start_date < end_date and total_collected < limit:
+            range_end = min(start_date + delta, end_date)
 
+            page = 1
+            while total_collected < limit:
+                query = f"stars:>0 created:{start_date}..{range_end}"
                 params = {
-                    "q": star_query,
+                    "q": query,
                     "sort": "stars",
                     "order": "desc",
-                    "per_page": per_page,
+                    "per_page": min(self.per_page, 100),
                     "page": page,
                 }
-
-                resp = self.session.get(url, params=params, timeout=30)
+                resp = self.session.get(f"{GITHUB_API_BASE}/search/repositories", params=params)
                 if resp.status_code == 403:
                     self._check_rate_limit_and_maybe_sleep(resp)
                     continue
                 if resp.status_code != 200:
-                    print(f"❌ Failed {star_query} page {page}: {resp.status_code}")
+                    print(f"Failed: {resp.status_code} for {query} page {page}")
                     break
 
                 items = resp.json().get("items", [])
@@ -164,7 +147,7 @@ class GitHubRestCrawler:
                     if repo["id"] in seen:
                         continue
                     seen.add(repo["id"])
-                    collected += 1
+                    total_collected += 1
                     yield {
                         "repo_id": repo["id"],
                         "repo_name": repo["name"],
@@ -176,64 +159,11 @@ class GitHubRestCrawler:
                         "language": repo.get("language"),
                         "updated_at": repo.get("updated_at"),
                     }
-
-                    if collected >= limit:
+                    if total_collected >= limit:
                         return
 
-                print(f"✅ Collected {collected} repos so far... ({star_query} p{page})")
-                time.sleep(1)
+                page += 1
+                time.sleep(1)  # polite sleep
 
-        print(f"🎯 Finished streaming {collected} repositories.")
+            start_date += delta
 
-
-            
-    # def fetch_popular_repos(self, limit=1000):
-    #     """
-    #     Fetch repositories sorted by stars using the Search API.
-    #     This returns older, popular repos instead of new empty ones.
-    #     """
-    #     url = f"{GITHUB_API_BASE}/search/repositories"
-    #     per_page = min(self.per_page, 100)
-    #     repos = []
-    #     page = 1
-
-    #     while len(repos) < limit:
-    #         params = {
-    #             "q": "stars:>100",  # only repos with >100 stars
-    #             "sort": "stars",
-    #             "order": "desc",
-    #             "per_page": per_page,
-    #             "page": page,
-    #         }
-    #         resp = self.session.get(url, params=params, timeout=30)
-    #         if resp.status_code == 403:
-    #             self._check_rate_limit_and_maybe_sleep(resp)
-    #             continue
-    #         if resp.status_code != 200:
-    #             print("Failed:", resp.status_code, resp.text)
-    #             break
-
-    #         items = resp.json().get("items", [])
-    #         if not items:
-    #             break
-
-    #         for repo in items:
-    #             repos.append({
-    #                 "repo_id": repo["id"],
-    #                 "repo_name": repo["name"],
-    #                 "full_name": repo["full_name"],
-    #                 "html_url": repo["html_url"],
-    #                 "description": repo["description"],
-    #                 "stars": repo["stargazers_count"],
-    #                 "forks": repo["forks_count"],
-    #                 "language": repo["language"],
-    #                 "updated_at": repo["updated_at"],
-    #             })
-    #             if len(repos) >= limit:
-    #                 break
-
-    #         page += 1
-    #         time.sleep(1)  # polite delay
-
-    #     return repos
-    
