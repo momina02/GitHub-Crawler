@@ -1,85 +1,162 @@
-# GitHub Repositories Crawler
+# 🕸️ GitHub Repositories Crawler 
 
-## Overall workflow
+A fully automated system that crawls **popular GitHub repositories**, stores them in **MySQL**, refreshes them daily, and exports a clean **CSV snapshot** — all powered by **GitHub Actions + GraphQL API**.
 
-1. **Setup .env**
+![Python](https://img.shields.io/badge/Python-3776AB?style=for-the-badge&logo=python&logoColor=white)
+![GitHub API](https://img.shields.io/badge/GitHub%20API-181717?style=for-the-badge&logo=github&logoColor=white)
+![Requests](https://img.shields.io/badge/Requests-000000?style=for-the-badge&logo=python&logoColor=white)
+![JSON](https://img.shields.io/badge/JSON-333333?style=for-the-badge&logo=json&logoColor=white)
+![Automation](https://img.shields.io/badge/Automation-FF6F00?style=for-the-badge)
+![Data%20Engineering](https://img.shields.io/badge/Data%20Engineering-4CAF50?style=for-the-badge)
 
-   - `.env` contains MySQL and crawler settings.
-   - GitHub Actions runner starts MySQL container.
+## 🔥 Tech Stack
 
-2. **Setup Database**
+**Languages & Tools:**
+`Python` • `GitHub GraphQL API` • `MySQL` • `GitHub Actions` • `Automation` • `Data Engineering` • `Docker` • `CSV Export`
 
-   - `db.py` ensures the `github_data` database and `repos` table exist.
+## 🎯 What This Project Does
 
-3. **Fetching**
+This crawler automatically:
 
-   - `main.py` (or `init_crawl.py`) calls `GitHubGraphQLCrawler`.
-   - Fetches popular repos in batches.
-   - Handles pagination with GraphQL cursors.
-   - Inserts or updates records in MySQL in batches.
+* Fetches **popular repositories** from GitHub using the **GraphQL API**
+* Stores & updates repo metadata in **MySQL**
+* Handles **pagination**, **batch inserts**, and **refresh cycles**
+* Exports the final dataset as **repos.csv**
+* Runs **daily** with full automation via **GitHub Actions**
 
-4. **Refreshing**
+# ⚙️ Overall Workflow
 
-   - Updates stars, forks, and other fields for existing repos.
-   - Keeps `crawled_at` timestamp updated.
+1. **🧩 Setup `.env`**
 
-5. **Exporting**
+   * Contains MySQL credentials + crawler configs
+   * GitHub Actions runner initializes MySQL Docker container
 
-   - After fetching/updating, `repos` table exported to CSV (`repos.csv`) via MySQL.
-   - Uploaded as artifact in GitHub Actions.
+2. **🛢️ Database Setup**
 
-6. **Automation**
+   * `db.py` ensures `github_data` DB + `repos` table exists
+   * Auto-creates DB & schema if missing
 
-   - Workflow runs daily, ensuring the DB and CSV are always up-to-date with GitHub stars info.
+3. **🕷️ Fetching Repos**
 
-### **Visual workflow (simplified)**
+   * `main.py` / `init_crawler.py` triggers `GitHubGraphQLCrawler`
+   * Fetches repos in **6-month intervals** (star-based search)
+   * Uses **GraphQL cursors** for pagination
+   * Inserts/updates rows in **batch mode**
+
+4. **🔄 Refreshing Existing Data**
+
+   * Updates stars, forks, timestamps
+   * Keeps `crawled_at` always fresh
+
+5. **📤 Exporting**
+
+   * Full `repos` table exported to `repos.csv`
+   * CSV uploaded as Actions **artifact**
+
+6. **🤖 Automation**
+
+   * Daily GitHub Actions run
+   * Ensures fresh DB + updated CSV snapshot
+
+# 🧭 Visual Workflow (Simplified)
 
 ```
 GitHub Actions Trigger
         |
         v
-   MySQL container
+   MySQL Container
         |
         v
-   Load .env -> initialize DB (db.py)
+Load .env -> initialize DB (db.py)
         |
         v
-   Run main.py -> GitHub GraphQL crawler
+Run main.py -> GitHub GraphQL Crawler
         |       -> Fetch popular repos
-        |       -> Insert/update MySQL (batch insert)
+        |       -> Batch insert/update MySQL
         |
         v
-   Refresh existing repos
+Refresh existing repos
         |
         v
-   Export MySQL table -> repos.csv
+Export MySQL table -> repos.csv
         |
         v
-   Upload CSV artifact
+Upload CSV Artifact
 ```
 
 ---
 
-## File Level Workflow
+# 📁 File-Level Workflow
 
-**db.py** : This file manages MySQL database. It loads enviornment variables host, port, username, password, and database name from .env file. The `get_conn()` function creates a connection to MySQL so the other arts of project can read or write in it similarly `initialize_database()` function ensures that the database has th table of `repos`. So it first connects to the MySQL, creates the database if it’s not there, and then creates the `repos` table with columns like `repo_id`, `repo_name`, `stars`, `forks`, `updated_at`, and a timestamp for when the record was crawled. Essentially, this file sets up the database structure and provides a way to connect to it for storing GitHub repository data.
+### **📌 db.py**
 
-**github_api.py** : This file contains the `GitHubGraphQLCrawler` class, which handles fetching repository data from GitHub using the GraphQL API. When the crawler is started, it sets up the API, including GitHub token for authentication. The `fetch_popular_repos()` function is the main part it fetches repositories with stars, splitting the time range into 6-month intervals, and pages through results using cursors to handle GitHub’s pagination. It keeps track of already fetched repositories to avoid duplicates and yields each repository’s details. The `fetch_repo_details()` function allows fetching the details of a single repository by its full name, which is used for refreshing data in the database. In short, this file handles all communication with GitHub and organizes repository data for storage.
+* Loads env variables (host, port, user, password, DB)
+* Creates the MySQL DB + `repos` table
+* Provides `get_conn()` for other modules
+* Ensures clean schema creation
 
-**init_crawler.py** : This file organize fetching repositories from GitHub and saving them into the database in bulk. It starts by loading environment variables, initializes the database, and creates a connection. It sets up a SQL query for inserting or updating repository data so that duplicates are updated rather than inserted multiple times. The script loops through repositories from the `GitHubGraphQLCrawler`, formats the timestamp, adds the data to a batch, and inserts it into the database in chunks (default 1000 at a time). It also respects API rate limits by pausing between inserts. Essentially, this file is for an initial or large-scale collection of GitHub repositories into your MySQL database.
+### **📌 github_api.py**
 
-**main.py** : This is your main automation script that handles both the initial collection and the periodic update of repository data. It uses a batch-upsert function `upsert_batch()` to insert or update multiple records at once, converting timestamps to MySQL format. The script first checks if the database is empty. If yes, it fetches repositories from GitHub and inserts them. Then, it refreshes the existing records by fetching updated details for each repository already in the database. After updates, it exports the entire `repos` table to a CSV file, cleaning up descriptions by removing newlines and extra spaces. So, this file is the main script for maintaining an up-to-date snapshot of popular GitHub repositories.
+* Contains `GitHubGraphQLCrawler`
+* Handles **authentication**, **GraphQL queries**, **pagination**
+* `fetch_popular_repos()` retrieves repos in 6-month intervals
+* `fetch_repo_details()` updates a single repo
+* Yields structured repository metadata
 
-**crawler.yaml** : This is a GitHub Actions workflow file that automates the running of your crawler. It is set to run daily and can also be triggered manually. It sets up a MySQL service, installs Python dependencies, waits for MySQL to be ready, creates a `.env` file with database and crawler configuration, initializes the database schema, and then runs your `main.py` crawler. After crawling, it exports the database table to a CSV and uploads it as an artifact so you can download it. Essentially, this file automates the entire process in a cloud environment, ensuring your database and CSV are always up to date without manual intervention.
+### **📌 init_crawler.py**
 
-**In short, it is a complete system that: sets up a MySQL database, fetches popular GitHub repositories using the GraphQL API, stores them in batches, refreshes them periodically, and exports the results to a CSV, all fully automatable via GitHub Actions.**
+* Bulk fetch + batch insert logic
+* Builds formatted MySQL rows
+* Handles API rate limiting
+* Ideal for initial large-scale data ingestion
 
----
+### **📌 main.py**
 
-## **Approach for fetching 500,000 repos**:
+* Main automation runner
+* Detects if DB is empty → performs initial crawl
+* Refreshes existing repos (stars, forks, updated_at)
+* Cleans & exports `repos.csv`
 
-Instead of running a single script, multiple scripts will run in parallel, reducing time. Also, I will add a batch process to make it more efficient. I can also split the data between multiple scripts, so instead of a single script fetching the complete data of a single repo, multiple script will fetch multiple parts of repositories data parallely.
+### **📌 crawler.yaml (GitHub Actions)**
 
-## **Approach for future schema**:
+* Runs daily or manually
+* Starts MySQL container
+* Creates `.env` automatically
+* Initializes DB + runs crawler
+* Exports & uploads CSV artifact
 
-I will make different tables for different types, like there will be a separate table for issues, separate for comments, stars, and so on... it will give a better overview and a clean structure which can be accessed through repo id.
+# 📊 Summary
+
+This system:
+
+* 🛢️ Creates & manages a MySQL repo database
+* 🔗 Fetches GitHub repos via **GraphQL**
+* 🧱 Stores + updates records in batches
+* 🕒 Refreshes daily using **GitHub Actions**
+* 📤 Outputs a clean CSV snapshot of  popular repos
+
+Fully automated. Zero manual effort.
+
+# 🚀 Future Enhancements
+
+### **📌 Scaling to 500,000+ Repositories**
+
+* Parallel scripts for different:
+
+  * date ranges
+  * languages
+  * star ranges
+* Split workloads to accelerate crawling
+* Add async tasks + queue-based operations
+
+### **📌 Future Database Schema**
+
+* Break into multiple tables:
+
+  * `repos`
+  * `issues`
+  * `comments`
+  * `stars`
+  * `contributors`
+* Cleaner, normalized, analytics-friendly schema
+* All linked via `repo_id`
